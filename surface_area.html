@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Animated Surface Area Simulator</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; flex-direction: column; align-items: center; padding: 20px; color: #333; }
+        h2 { margin-bottom: 5px; }
+        p.subtitle { color: #666; margin-bottom: 20px; text-align: center; }
+        .container { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; max-width: 1200px; width: 100%; }
+        
+        .main-col { display: flex; flex-direction: column; gap: 15px; flex-grow: 1; max-width: 800px; }
+        .canvas-box { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; }
+        canvas { border: 1px solid #ddd; background: #f8f9fa; border-radius: 4px; width: 100%; height: auto; cursor: grab; }
+        
+        .badge-base { background: #e3f2fd; color: #1565c0; padding: 3px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; margin-right: 10px;}
+        .badge-lateral { background: #fff3e0; color: #e65100; padding: 3px 8px; border-radius: 4px; font-size: 14px; font-weight: bold; }
+
+        .anim-controls { display: flex; align-items: center; gap: 15px; background: #e3f2fd; padding: 10px 20px; border-radius: 8px; border: 1px solid #bbdefb; }
+        .play-btn { background: #1976d2; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px; }
+        .play-btn:hover { background: #1565c0; }
+        .slider-container { flex-grow: 1; display: flex; align-items: center; gap: 10px; font-weight: bold; color: #1565c0; }
+        .slider-container input { flex-grow: 1; cursor: pointer; }
+
+        .controls { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 340px; display: flex; flex-direction: column; gap: 15px; }
+        .control-group label { display: block; font-weight: bold; margin-bottom: 5px; color: #555; font-size: 14px; }
+        select, input[type=range] { width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box; }
+        .val-display { float: right; color: #007bff; }
+
+        .math-box { background: #e8f5e9; padding: 15px; border-radius: 8px; border: 1px solid #c8e6c9; font-size: 15px; }
+        .math-box h3 { margin-top: 0; color: #2e7d32; border-bottom: 2px solid #a5d6a7; padding-bottom: 5px; font-size: 16px; }
+        .step { margin-bottom: 10px; line-height: 1.5; }
+        .final-ans { font-weight: bold; font-size: 18px; color: #d32f2f; margin-top: 15px; text-align: center; background: #ffebee; padding: 10px; border-radius: 5px;}
+    </style>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+<body>
+
+    <h2>Animated Surface Area Simulator</h2>
+    <p class="subtitle">Watch the 3D shape morph into a 2D net. The bases unfold perfectly without overlap.</p>
+
+    <div class="container">
+        <div class="main-col">
+            <div class="canvas-box">
+                <div style="margin-bottom: 10px;">
+                    <span class="badge-base">Bases (Top & Bottom)</span>
+                    <span class="badge-lateral">Lateral Faces (Sides)</span>
+                </div>
+                <canvas id="simCanvas" width="800" height="550"></canvas>
+            </div>
+            
+            <div class="anim-controls">
+                <button class="play-btn" onclick="toggleAnimation()">▶ Play Unfold</button>
+                <div class="slider-container">
+                    <span>3D Folded</span>
+                    <input type="range" id="unfoldSlider" min="0" max="100" value="0">
+                    <span>2D Flat Net</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label>Shape of the Prism:</label>
+                <select id="shapeSelect">
+                    <option value="square" selected>Regular: Square Prism</option>
+                    <option value="hexagon">Regular: Hexagonal Prism</option>
+                    <option value="rightTri">Irregular: Right Triangle (3-4-5)</option>
+                    <option value="trapezoid">Irregular: Trapezoid</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Base Scale Multiplier (s): <span id="sVal" class="val-display">2</span></label>
+                <input type="range" id="sSlider" min="1" max="3.5" step="0.5" value="2">
+            </div>
+
+            <div class="control-group">
+                <label>Prism Height (h): <span id="hVal" class="val-display">8 cm</span></label>
+                <input type="range" id="hSlider" min="4" max="12" step="1" value="8">
+            </div>
+
+            <div class="math-box" id="mathOutput"></div>
+        </div>
+    </div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const shapeSelect = document.getElementById('shapeSelect');
+    const sSlider = document.getElementById('sSlider');
+    const hSlider = document.getElementById('hSlider');
+    const unfoldSlider = document.getElementById('unfoldSlider');
+    const mathOutput = document.getElementById('mathOutput');
+
+    const colorBaseFill = 'rgba(52, 152, 219, 0.8)'; 
+    const colorBaseStroke = '#2980b9';
+    const colorLatFill = 'rgba(243, 156, 18, 0.8)';  
+    const colorLatStroke = '#d35400';
+
+    // Shape Definitions (Normalized 2D base points on X-Z plane)
+    const baseDefs = {
+        square: [ {x:-1.5, z:-1.5}, {x:1.5, z:-1.5}, {x:1.5, z:1.5}, {x:-1.5, z:1.5} ],
+        hexagon: [], 
+        // Right Triangle (Sides 3, 4, 5)
+        rightTri: [ {x:-1.5, z:-2}, {x:1.5, z:-2}, {x:-1.5, z:2} ],
+        // Trapezoid (Base1=5, Base2=3, Height=4)
+        trapezoid: [ {x:-2.5, z:-2}, {x:2.5, z:-2}, {x:1.5, z:2}, {x:-1.5, z:2} ]
+    };
+
+    // Generate hexagon dynamically
+    for(let i=0; i<6; i++) {
+        let angle = i * Math.PI / 3;
+        baseDefs.hexagon.push({x: 1.5 * Math.cos(angle), z: 1.5 * Math.sin(angle)});
+    }
+
+    let faces = [];
+    let rotY = 0;
+    let animId;
+    let autoAnimate = false;
+    let animDirection = 1;
+
+    function init() {
+        let shape = shapeSelect.value;
+        let s = parseFloat(sSlider.value);
+        let h = parseFloat(hSlider.value);
+        
+        document.getElementById('sVal').innerText = s + "x";
+        document.getElementById('hVal').innerText = h + " cm";
+        
+        buildGeometry(shape, s, h);
+        updateMath(shape, s, h);
+    }
+
+    function buildGeometry(shape, s, h) {
+        let basePts = baseDefs[shape].map(p => ({x: p.x * s, z: p.z * s}));
+        let n = basePts.length;
+        
+        // Calculate side lengths of the base
+        let L = [];
+        for(let i=0; i<n; i++) {
+            let p1 = basePts[i], p2 = basePts[(i+1)%n];
+            L.push(Math.hypot(p2.x - p1.x, p2.z - p1.z));
+        }
+        let totalL = L.reduce((a,b)=>a+b, 0);
+        let startX = -totalL / 2;
+
+        // --- Rigid Transformation Logic to Prevent Overlap ---
+        // We calculate how to map the 3D polygon perfectly onto the 2D edge of the first lateral face.
+        let p0 = basePts[0], p1 = basePts[1];
+        let ex = p1.x - p0.x, ez = p1.z - p0.z;
+        let elen = Math.hypot(ex, ez);
+        let cosT = ex / elen, sinT = ez / elen;
+        
+        // Convert all base points relative to edge 0 -> 1
+        let localPts = basePts.map(p => {
+            let dx = p.x - p0.x, dz = p.z - p0.z;
+            return {
+                rx: dx * cosT + dz * sinT,
+                ry: -dx * sinT + dz * cosT 
+            };
+        });
+        
+        // Ensure the interior of the polygon always points "outwards" from the lateral faces
+        let sumRY = localPts.reduce((sum, p) => sum + p.ry, 0);
+        let flipY = sumRY > 0 ? -1 : 1;
+
+        faces = [];
+
+        // Top Base Face (Always hinged perfectly on the top of lateral face 0)
+        faces.push({
+            pts3D: basePts.map(p => ({x: p.x, y: -h/2, z: p.z})),
+            pts2D: localPts.map(lp => ({x: startX + lp.rx, y: -h/2 + lp.ry * flipY})),
+            type: 'base'
+        });
+
+        // Bottom Base Face (Always hinged perfectly on the bottom of lateral face 0)
+        faces.push({
+            pts3D: basePts.map(p => ({x: p.x, y: h/2, z: p.z})),
+            pts2D: localPts.map(lp => ({x: startX + lp.rx, y: h/2 - lp.ry * flipY})),
+            type: 'base'
+        });
+
+        // Lateral Faces
+        let currX = startX;
+        for(let i=0; i<n; i++) {
+            let p_a = basePts[i], p_b = basePts[(i+1)%n];
+            faces.push({
+                pts3D: [
+                    {x: p_a.x, y: -h/2, z: p_a.z}, {x: p_b.x, y: -h/2, z: p_b.z},
+                    {x: p_b.x, y: h/2, z: p_b.z}, {x: p_a.x, y: h/2, z: p_a.z}
+                ],
+                pts2D: [
+                    {x: currX, y: -h/2}, {x: currX + L[i], y: -h/2},
+                    {x: currX + L[i], y: h/2}, {x: currX, y: h/2}
+                ],
+                type: 'lateral'
+            });
+            currX += L[i];
+        }
+    }
+
+    function updateMath(shape, s, h) {
+        let baseArea = 0, baseFormula = "", name = "";
+        let L = [];
+        
+        if(shape === 'square') {
+            name = "Square Base";
+            let side = 3 * s;
+            baseArea = side * side;
+            baseFormula = `$A = s^2 = (${side})^2 = ${baseArea.toFixed(1)}$ cm²`;
+            L = [side, side, side, side];
+        } 
+        else if(shape === 'hexagon') {
+            name = "Regular Hexagon Base";
+            let side = 1.5 * s;
+            baseArea = (3 * Math.sqrt(3) / 2) * side * side;
+            baseFormula = `$A = \\frac{3\\sqrt{3}}{2} s^2 = ${baseArea.toFixed(1)}$ cm²`;
+            L = [side, side, side, side, side, side];
+        }
+        else if(shape === 'rightTri') {
+            name = "Right Triangle Base (3-4-5 ratio)";
+            let a = 3*s, b = 4*s, c = 5*s;
+            baseArea = 0.5 * a * b;
+            baseFormula = `$A = \\frac{1}{2} b h = \\frac{1}{2}(${a})(${b}) = ${baseArea.toFixed(1)}$ cm²`;
+            L = [a, c, b]; 
+        }
+        else if(shape === 'trapezoid') {
+            name = "Trapezoid Base";
+            let b1 = 5*s, b2 = 3*s, ht = 4*s;
+            baseArea = 0.5 * (b1 + b2) * ht;
+            baseFormula = `$A = \\frac{1}{2}(b_1 + b_2)h = ${baseArea.toFixed(1)}$ cm²`;
+            let leg1 = Math.hypot(1*s, 4*s); 
+            let leg2 = Math.hypot(1*s, 4*s);
+            L = [b1, leg1, b2, leg2];
+        }
+
+        let totalBaseArea = 2 * baseArea;
+        
+        let lateralMath = L.map((len, i) => `Face ${i+1}: $${len.toFixed(1)} \\times ${h} = ${(len*h).toFixed(1)}$`).join('<br>');
+        let totalLat = L.reduce((sum, len) => sum + (len * h), 0);
+
+        let html = `
+            <h3>Step-by-Step Calculation</h3>
+            <div class="step">
+                <b>1. Area of the Bases (${name})</b><br>
+                Area of one base:<br> ${baseFormula}<br>
+                Two Bases: $2 \\times ${baseArea.toFixed(1)} = ${totalBaseArea.toFixed(1)}$ cm²
+            </div>
+            <div class="step">
+                <b>2. Area of Lateral Faces</b><br>
+                <span style="font-size: 13px; color: #e65100;">${lateralMath}</span><br>
+                Total Lateral Area: $${totalLat.toFixed(1)}$ cm²
+            </div>
+            <div class="final-ans">
+                Total Surface Area<br>
+                $${totalBaseArea.toFixed(1)} + ${totalLat.toFixed(1)} = ${(totalBaseArea + totalLat).toFixed(1)}$ cm²
+            </div>
+        `;
+        mathOutput.innerHTML = html;
+        if (window.MathJax) MathJax.typesetPromise([mathOutput]).catch(err => console.log(err.message));
+    }
+
+    function toggleAnimation() {
+        autoAnimate = !autoAnimate;
+        let btn = document.querySelector('.play-btn');
+        if (autoAnimate) {
+            btn.innerText = "⏸ Pause";
+            let val = parseInt(unfoldSlider.value);
+            if (val >= 100) animDirection = -1;
+            else if (val <= 0) animDirection = 1;
+        } else {
+            btn.innerText = "▶ Play Unfold";
+        }
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        let t = parseInt(unfoldSlider.value) / 100; 
+        
+        rotY += 0.015 * (1 - t); 
+        let rotX = 0.3 * (1 - t); 
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const DRAW_SCALE = 14; 
+
+        // 1. Calculate Morphed Positions
+        faces.forEach(face => {
+            let pts = [];
+            let zSum = 0;
+            
+            for(let i=0; i<face.pts3D.length; i++) {
+                let p3 = face.pts3D[i];
+                let p2 = face.pts2D[i];
+                
+                let x1 = p3.x * Math.cos(rotY) + p3.z * Math.sin(rotY);
+                let z1 = -p3.x * Math.sin(rotY) + p3.z * Math.cos(rotY);
+                let y2 = p3.y * Math.cos(rotX) - z1 * Math.sin(rotX);
+                let z2 = p3.y * Math.sin(rotX) + z1 * Math.cos(rotX);
+                
+                let d = 400;
+                let scale = d / (d + z2);
+                let screen3D_x = cx + x1 * scale * DRAW_SCALE;
+                let screen3D_y = cy + y2 * scale * DRAW_SCALE;
+                
+                let screen2D_x = cx + p2.x * DRAW_SCALE;
+                let screen2D_y = cy + p2.y * DRAW_SCALE;
+                
+                let finalX = screen3D_x * (1 - t) + screen2D_x * t;
+                let finalY = screen3D_y * (1 - t) + screen2D_y * t;
+                let finalZ = z2 * (1 - t); 
+                
+                zSum += finalZ;
+                pts.push({x: finalX, y: finalY});
+            }
+            
+            face.avgZ = zSum / face.pts3D.length;
+            face.drawPts = pts;
+        });
+
+        // 2. Sort faces by Depth
+        faces.sort((a,b) => b.avgZ - a.avgZ);
+
+        // 3. Draw
+        faces.forEach(face => {
+            ctx.beginPath();
+            face.drawPts.forEach((p, i) => {
+                if(i===0) ctx.moveTo(p.x, p.y);
+                else ctx.lineTo(p.x, p.y);
+            });
+            ctx.closePath();
+            
+            ctx.fillStyle = (face.type === 'base') ? colorBaseFill : colorLatFill;
+            ctx.strokeStyle = (face.type === 'base') ? colorBaseStroke : colorLatStroke;
+            ctx.lineWidth = 2;
+            
+            ctx.fill();
+            ctx.stroke();
+        });
+
+        if (autoAnimate) {
+            let val = parseInt(unfoldSlider.value);
+            val += animDirection * 1.5; 
+            if (val >= 100) { val = 100; autoAnimate = false; document.querySelector('.play-btn').innerText = "▶ Play Fold"; }
+            if (val <= 0) { val = 0; autoAnimate = false; document.querySelector('.play-btn').innerText = "▶ Play Unfold"; }
+            unfoldSlider.value = val;
+        }
+
+        animId = requestAnimationFrame(draw);
+    }
+
+    shapeSelect.addEventListener('change', init);
+    sSlider.addEventListener('input', init);
+    hSlider.addEventListener('input', init);
+    unfoldSlider.addEventListener('input', () => { autoAnimate = false; document.querySelector('.play-btn').innerText = "▶ Play Animation"; });
+
+    init();
+    draw();
+</script>
+</body>
+</html>
