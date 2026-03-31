@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>G.T. College AI Science Lab</title>
+    
+    <!-- OFFLINE NOTE: Download these files and put them in the same folder to work without WiFi -->
+    <!-- Or keep these links to work whenever you have internet -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root { --gt-green: #2e7d32; --gt-red: #d32f2f; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #f4f7f4; padding: 20px; }
+        .container { max-width: 1000px; margin: auto; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-top: 8px solid var(--gt-green); }
+        
+        /* Header Branding */
+        .school-header { display: flex; align-items: center; margin-bottom: 25px; padding-bottom: 15px; border-bottom: 2px solid #eee; }
+        .school-logo { height: 80px; margin-right: 20px; }
+        .school-name { font-size: 26px; font-weight: bold; color: var(--gt-green); }
+
+        h1 { text-align: center; color: #333; margin: 10px 0; font-size: 22px; text-transform: uppercase; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
+        
+        /* Analysis Results Panel */
+        .stats-panel { background: #f9fdf9; padding: 20px; border-radius: 12px; border: 1px solid #e0e0e0; border-left: 6px solid var(--gt-green); }
+        .math-font { font-family: "Courier New", monospace; font-weight: bold; color: var(--gt-red); }
+
+        /* Inputs */
+        table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+        th { background-color: var(--gt-green); color: white; padding: 10px; }
+        td { padding: 8px; border: 1px solid #eee; text-align: center; }
+        input { width: 80%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; text-align: center; }
+
+        button { width: 100%; padding: 15px; background-color: var(--gt-red); color: white; border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        button:hover { background-color: #b71c1c; }
+
+        .chart-box { background: white; padding: 10px; border-radius: 12px; border: 1px solid #e0e0e0; height: 350px; }
+        #status { text-align: center; margin-top: 10px; font-weight: bold; color: var(--gt-green); }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="school-header">
+        <!-- Make sure your image is named logo.png in the same folder -->
+        <img class="school-logo" src="logo.png" alt="G.T. College Logo">
+        <div class="school-name">G.T. (Ellen Yeung) College</div>
+    </div>
+
+    <h1>AI Physics Lab: Car Travel Distance</h1>
+
+    <div class="grid">
+        <div>
+            <table>
+                <thead>
+                    <tr><th>Height (cm)</th><th>Distance (cm)</th></tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr><td><input type="number" class="x-val" value="10"></td><td><input type="number" class="y-val" value="15"></td></tr>
+                    <tr><td><input type="number" class="x-val" value="20"></td><td><input type="number" class="y-val" value="32"></td></tr>
+                    <tr><td><input type="number" class="x-val" value="30"></td><td><input type="number" class="y-val" value="48"></td></tr>
+                    <tr><td><input type="number" class="x-val" value="40"></td><td><input type="number" class="y-val" value="61"></td></tr>
+                    <tr><td><input type="number" class="x-val" value="50"></td><td><input type="number" class="y-val" value="79"></td></tr>
+                </tbody>
+            </table>
+            <button onclick="runAnalysis()">START AI TRAINING</button>
+            <div id="status">Ready</div>
+        </div>
+
+        <div class="stats-panel">
+            <h3>Scientific Analysis</h3>
+            <p>Data Status: <span id="stdStatus" class="math-font">Original</span></p>
+            <p>Slope (m): <span id="slopeVal" class="math-font">-</span></p>
+            <p>Y-Intercept (c): <span id="interceptVal" class="math-font">-</span></p>
+            <p>Linear Regression: <span id="equationVal" class="math-font">y = mx + c</span></p>
+            <p>Correlation (r): <span id="corrVal" class="math-font">-</span></p>
+        </div>
+    </div>
+
+    <div class="grid">
+        <div class="chart-box"><canvas id="mainChart"></canvas></div>
+        <div class="chart-box"><canvas id="lossChart"></canvas></div>
+    </div>
+</div>
+
+<script>
+    let mainChart, lossChart;
+
+    async function runAnalysis() {
+        const status = document.getElementById('status');
+        status.innerText = "AI Standardizing & Learning...";
+
+        const xRaw = Array.from(document.querySelectorAll('.x-val')).map(i => parseFloat(i.value));
+        const yRaw = Array.from(document.querySelectorAll('.y-val')).map(i => parseFloat(i.value));
+
+        // 1. DATA STANDARDIZATION (Scaling for AI)
+        const xMin = Math.min(...xRaw), xMax = Math.max(...xRaw);
+        const yMin = Math.min(...yRaw), yMax = Math.max(...yRaw);
+        const xStd = xRaw.map(v => (v - xMin) / (xMax - xMin));
+        const yStd = yRaw.map(v => (v - yMin) / (yMax - yMin));
+        document.getElementById('stdStatus').innerText = "Standardized (Min-Max 0 to 1)";
+
+        // 2. LINEAR REGRESSION MATH (Least Squares)
+        const n = xRaw.length;
+        let sX=0, sY=0, sXY=0, sX2=0, sY2=0;
+        for(let i=0; i<n; i++) {
+            sX+=xRaw[i]; sY+=yRaw[i]; sXY+=xRaw[i]*yRaw[i]; sX2+=xRaw[i]*xRaw[i]; sY2+=yRaw[i]*yRaw[i];
+        }
+        const slope = (n*sXY - sX*sY) / (n*sX2 - sX*sX);
+        const intercept = (sY - slope*sX) / n;
+        const r = (n*sXY - sX*sY) / Math.sqrt((n*sX2 - sX*sX) * (n*sY2 - sY*sY));
+
+        document.getElementById('slopeVal').innerText = slope.toFixed(4);
+        document.getElementById('interceptVal').innerText = intercept.toFixed(4);
+        document.getElementById('equationVal').innerText = `y = ${slope.toFixed(2)}x + ${intercept.toFixed(2)}`;
+        document.getElementById('corrVal').innerText = r.toFixed(4);
+
+        // 3. AI TRAINING (TensorFlow.js)
+        const xs = tf.tensor2d(xStd, [n, 1]);
+        const ys = tf.tensor2d(yStd, [n, 1]);
+        const model = tf.sequential();
+        model.add(tf.layers.dense({units: 1, inputShape: [1]}));
+        model.compile({loss: 'meanSquaredError', optimizer: tf.train.sgd(0.1)});
+
+        const lossHistory = [];
+        await model.fit(xs, ys, {
+            epochs: 100,
+            callbacks: { onEpochEnd: (epoch, logs) => lossHistory.push(logs.loss) }
+        });
+
+        // 4. DRAW GRAPHS
+        const pX = [xMin, xMax];
+        const pY = [slope * xMin + intercept, slope * xMax + intercept];
+        updateCharts(xRaw, yRaw, pX, pY, lossHistory);
+        status.innerText = "Training Complete!";
+    }
+
+    function updateCharts(xRaw, yRaw, pX, pY, lossData) {
+        const ctx1 = document.getElementById('mainChart').getContext('2d');
+        if(mainChart) mainChart.destroy();
+        mainChart = new Chart(ctx1, {
+            type: 'scatter',
+            data: {
+                datasets: [{ label: 'Student Data', data: xRaw.map((v, i) => ({x: v, y: yRaw[i]})), backgroundColor: '#d32f2f' },
+                           { label: 'Regression Line', data: pX.map((v, i) => ({x: v, y: pY[i]})), type: 'line', borderColor: '#2e7d32', fill: false }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+
+        const ctx2 = document.getElementById('lossChart').getContext('2d');
+        if(lossChart) lossChart.destroy();
+        lossChart = new Chart(ctx2, {
+            type: 'line',
+            data: {
+                labels: lossData.map((_, i) => i),
+                datasets: [{ label: 'Loss Rate (Error)', data: lossData, borderColor: '#2e7d32', fill: true, backgroundColor: 'rgba(46, 125, 50, 0.1)', pointRadius: 0 }]
+            },
+            options: { maintainAspectRatio: false }
+        });
+    }
+</script>
+</body>
+</html>
